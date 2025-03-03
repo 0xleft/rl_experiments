@@ -47,13 +47,21 @@ class SoloPlayerEnv(gymnasium.Env):
                 f"Received invalid action={action} which is not part of the action space"
             )
         
+        previous_score = self.player.claim_count
+        previous_position = self.player.position        
+
         self.player.move_direction = Directions[action]
         self.game.update()
 
         terminated = not self.player.is_alive
         truncated = self.player.steps_survived >= self.max_steps
 
-        reward = 0 # todo
+        reward = -1 if terminated else 1
+        
+        if self.player.claim_count > previous_score:
+            reward += 2
+        if self.player.position == previous_position:
+            reward -= 0.1
 
         # Optionally we can pass additional info, we are not using that for now
         info = {}
@@ -87,7 +95,7 @@ class SoloPlayerEnv(gymnasium.Env):
             self.clock = pygame.time.Clock()
         
         canvas = pygame.Surface((self.width, self.height))
-        canvas.fill((255, 255, 255))
+        canvas.fill((0, 0, 0))
         
         for y, row in enumerate(self.game.grid.tiles):
             for x, tile in enumerate(row):

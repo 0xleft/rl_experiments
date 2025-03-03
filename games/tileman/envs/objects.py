@@ -252,7 +252,6 @@ class Game:
         if len(self.players) == 0:
             return
 
-        # print(f"Took {time.time() - start_time} to update")    
         
         max_score = 0
         player_max_score = self.players[0]
