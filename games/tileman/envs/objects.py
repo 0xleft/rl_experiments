@@ -227,15 +227,15 @@ class Game:
         for other_player in self.players:
             if other_player == player:
                 continue
-        
-        if other_player.position == player.position:
-            if self.grid.get_tile_at(player.position).claimed and not self.grid.get_tile_at(player.position).claimer == player:
-                other_player.kill(self.grid)
-            elif self.grid.get_tile_at(player.position).claimed and not self.grid.get_tile_at(player.position).claimer == other_player:
-                player.kill(self.grid)
-            else:
-                player.kill(self.grid)
-                other_player.kill(self.grid)
+
+            if other_player.position == player.position:
+                if self.grid.get_tile_at(player.position).claimed and not self.grid.get_tile_at(player.position).claimer == player:
+                    other_player.kill(self.grid)
+                elif self.grid.get_tile_at(player.position).claimed and not self.grid.get_tile_at(player.position).claimer == other_player:
+                    player.kill(self.grid)
+                else:
+                    player.kill(self.grid)
+                    other_player.kill(self.grid)
   
     def update(self):
         for player in self.players:
@@ -253,7 +253,6 @@ class Game:
         if len(self.players) == 0:
             return
 
-        
         max_score = 0
         player_max_score = self.players[0]
         for player in self.players:

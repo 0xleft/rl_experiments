@@ -19,6 +19,8 @@ class SoloPlayerEnv(gymnasium.Env):
         self.game = Game(self.grid_size, self.grid_size)
         self.player = self.game.spawn_random_player()
 
+        self.steps = 0
+
         self.width = 600
         self.height = 600
         self.grid_tile_size = min(self.width // len(self.game.grid.tiles[0]), self.height // len(self.game.grid.tiles))
@@ -37,6 +39,7 @@ class SoloPlayerEnv(gymnasium.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
+        self.steps = 0
         self.game = Game(self.grid_size, self.grid_size)
         self.player = self.game.spawn_random_player(seed=seed)
 
@@ -58,10 +61,15 @@ class SoloPlayerEnv(gymnasium.Env):
         self.game.update()
 
         terminated = not self.player.is_alive
+
+        self.steps += 1
+
+        if terminated:
+            print(self.steps)
+
         truncated = False
 
         reward = 0.0
-        
         if self.player.claim_count > previous_score:
             reward += 1.0
         if self.player.position == previous_position:
@@ -84,7 +92,7 @@ class SoloPlayerEnv(gymnasium.Env):
     def render(self):
         if self.render_mode == "rgb_array":
             cv2.imshow('Window Name', self._render_frame())
-            cv2.waitKey(1)
+            cv2.waitKey(100)
             return self._render_frame()
     
     def _render_frame(self):
@@ -110,11 +118,14 @@ class SoloPlayerEnv(gymnasium.Env):
                     pygame.draw.rect(canvas, tile.claimer.color, (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size))
                 else:
                     pygame.draw.rect(canvas, (20, 20, 20), (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size), 1)
-                
                 if tile.ocupied:
                     margin = self.grid_tile_size // 5
                     pygame.draw.rect(canvas, (max(tile.ocupant.color.r - 40, 0), max(tile.ocupant.color.g - 40, 0), max(tile.ocupant.color.b - 40, 0)), (x * self.grid_tile_size + margin, y * self.grid_tile_size + margin, self.grid_tile_size - 2 * margin, self.grid_tile_size - 2 * margin))
         
+        for player in self.game.players:
+            margin = self.grid_tile_size // 5
+            pygame.draw.rect(canvas, (255, 0, 0), (player.position.x * self.grid_tile_size + margin, player.position.y * self.grid_tile_size + margin, self.grid_tile_size - 2 * margin, self.grid_tile_size - 2 * margin))
+
         self.surf = pygame.transform.flip(canvas, False, True)
         self.screen.blit(self.surf, (0, 0))
         if self.render_mode == "human":
