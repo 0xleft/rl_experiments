@@ -4,6 +4,7 @@ import uuid
 from copy import deepcopy
 import time
 import random
+import numpy as np
 
 class Vector:
     x: int
@@ -95,7 +96,7 @@ class Player:
 
             borders.append(1 if vision[i][1] else 0)
         
-        return [claims, ocupations, borders]
+        return np.concatenate([claims, ocupations, borders])
 
 
 class Tile:

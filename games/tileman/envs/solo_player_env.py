@@ -31,7 +31,7 @@ class SoloPlayerEnv(gymnasium.Env):
         self.observation_space = spaces.Box(
             low=-1,
             high=1,
-            shape=(1, 3, (self.vision_range*2 + 1)**2),
+            shape=(1, 3 * (self.vision_range*2 + 1)**2),
             dtype=np.int8
         )
 
@@ -58,14 +58,14 @@ class SoloPlayerEnv(gymnasium.Env):
         self.game.update()
 
         terminated = not self.player.is_alive
-        truncated = self.player.steps_survived >= self.max_steps
+        truncated = False
 
         reward = 0.0
         
         if self.player.claim_count > previous_score:
             reward += 1.0
-        # if self.player.position == previous_position:
-        #     reward -= 0.1
+        if self.player.position == previous_position:
+            reward -= 0.1
 
         # Optionally we can pass additional info, we are not using that for now
         info = {}
