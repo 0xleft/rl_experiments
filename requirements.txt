@@ -4,3 +4,4 @@ pygame
 jupyter
 pillow
 imitation
+ipywidgets
