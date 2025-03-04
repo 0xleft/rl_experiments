@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import gymnasium
 from gymnasium import spaces
@@ -8,7 +9,7 @@ class SoloPlayerEnv(gymnasium.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
 
-    def __init__(self, grid_size=10, vision_range=5, max_steps=200, render_mode="rgb_array"):
+    def __init__(self, grid_size=10, vision_range=5, max_steps=300, render_mode="rgb_array"):
         super(SoloPlayerEnv, self).__init__()
         self.render_mode = render_mode
 
@@ -39,6 +40,9 @@ class SoloPlayerEnv(gymnasium.Env):
         self.game = Game(self.grid_size, self.grid_size)
         self.player = self.game.spawn_random_player(seed=seed)
 
+        if self.render_mode == "human":
+            self._render_frame()
+
         return np.array([self.player.get_vision(self.game.grid, self.vision_range)]).astype(np.int8), {}  # empty info dict
 
     def step(self, action):
@@ -56,10 +60,10 @@ class SoloPlayerEnv(gymnasium.Env):
         terminated = not self.player.is_alive
         truncated = self.player.steps_survived >= self.max_steps
 
-        reward = 0
+        reward = 0.0
         
         if self.player.claim_count > previous_score:
-            reward += 1
+            reward += 1.0
         # if self.player.position == previous_position:
         #     reward -= 0.1
 
@@ -79,6 +83,8 @@ class SoloPlayerEnv(gymnasium.Env):
 
     def render(self):
         if self.render_mode == "rgb_array":
+            cv2.imshow('Window Name', self._render_frame())
+            cv2.waitKey(1)
             return self._render_frame()
     
     def _render_frame(self):
@@ -124,3 +130,12 @@ class SoloPlayerEnv(gymnasium.Env):
         if self.screen is not None:
             pygame.display.quit()
             pygame.quit()
+
+
+from gymnasium.envs.registration import register
+
+register(
+    id='tileman-solo-v0',
+    entry_point='games.tileman.envs.solo_player_env:SoloPlayerEnv',
+    max_episode_steps=300,
+)
