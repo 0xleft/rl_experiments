@@ -3,4 +3,4 @@ gymnasium
 pygame
 jupyter
 pillow
-PIL
+imitation
