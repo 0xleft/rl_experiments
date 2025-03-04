@@ -63,10 +63,12 @@ class SoloPlayerEnv(gymnasium.Env):
         self.steps += 1
         truncated = False
 
-        reward = -1.0 if terminated else 0.0
+        reward = 0.0
         if self.player.claim_count > previous_score:
-            reward += 4.0
+            reward += 1.0
 
+        reward = -1.0 if terminated else reward
+        
         # Optionally we can pass additional info, we are not using that for now
         info = {}
         
