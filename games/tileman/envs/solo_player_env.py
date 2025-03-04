@@ -9,11 +9,10 @@ class SoloPlayerEnv(gymnasium.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
 
-    def __init__(self, grid_size=10, vision_range=5, max_steps=300, render_mode="rgb_array"):
+    def __init__(self, grid_size=10, vision_range=5, render_mode="rgb_array"):
         super(SoloPlayerEnv, self).__init__()
         self.render_mode = render_mode
 
-        self.max_steps = max_steps
         self.vision_range = vision_range
         self.grid_size = grid_size
         self.game = Game(self.grid_size, self.grid_size)
@@ -55,7 +54,6 @@ class SoloPlayerEnv(gymnasium.Env):
             )
         
         previous_score = self.player.claim_count
-        previous_position = self.player.position        
 
         self.player.move_direction = Directions[action]
         self.game.update()
@@ -67,7 +65,9 @@ class SoloPlayerEnv(gymnasium.Env):
 
         reward = 0.0
         if self.player.claim_count > previous_score:
-            reward += 1.0
+            reward += 4.0
+        else:
+            reward -= 0.1
         #if self.player.position == previous_position:
         #    reward -= 0.1
 
