@@ -215,9 +215,9 @@ class Game:
                     if tile.ocupant == player:
                         if tile.claimer != None:
                             tile.claimer.claim_count -= 1
-                            tile.claim(player)
-                            tile.unoccupy()
-                            player.claim_count += 1
+                        tile.claim(player)
+                        tile.unoccupy()
+                        player.claim_count += 1
                         
                         if player.claim_count > player.max_claim_count:
                             player.max_claim_count = player.claim_count
