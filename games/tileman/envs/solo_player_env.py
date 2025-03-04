@@ -56,12 +56,12 @@ class SoloPlayerEnv(gymnasium.Env):
         terminated = not self.player.is_alive
         truncated = self.player.steps_survived >= self.max_steps
 
-        reward = -1 if terminated else 1
+        reward = 0
         
         if self.player.claim_count > previous_score:
-            reward += 2
-        if self.player.position == previous_position:
-            reward -= 0.1
+            reward += 1
+        # if self.player.position == previous_position:
+        #     reward -= 0.1
 
         # Optionally we can pass additional info, we are not using that for now
         info = {}
