@@ -63,17 +63,13 @@ class SoloPlayerEnv(gymnasium.Env):
         terminated = not self.player.is_alive
 
         self.steps += 1
-
-        if terminated:
-            print(self.steps)
-
         truncated = False
 
         reward = 0.0
         if self.player.claim_count > previous_score:
             reward += 1.0
-        if self.player.position == previous_position:
-            reward -= 0.1
+        #if self.player.position == previous_position:
+        #    reward -= 0.1
 
         # Optionally we can pass additional info, we are not using that for now
         info = {}
@@ -92,7 +88,7 @@ class SoloPlayerEnv(gymnasium.Env):
     def render(self):
         if self.render_mode == "rgb_array":
             cv2.imshow('Window Name', self._render_frame())
-            cv2.waitKey(100)
+            cv2.waitKey(1)
             return self._render_frame()
     
     def _render_frame(self):
