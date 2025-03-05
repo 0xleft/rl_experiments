@@ -18,10 +18,13 @@ class TileServer:
         self.clients: dict[websockets.ClientConnection, Player] = {}
         self.players_moved = {}
         self.game = Game(grid_size, grid_size)
+        
+        self.width = 600
+        self.height = 600
+        self.grid_tile_size = min(self.width // len(self.game.grid.tiles[0]), self.height // len(self.game.grid.tiles))
 
     async def handler(self, websocket, path=""):
         player = self.game.spawn_random_player()
-        print(f"New player connected")
         self.clients[websocket] = player
         self.players_moved[websocket] = False
         try:
@@ -42,7 +45,8 @@ class TileServer:
             await websocket.send(pickle.dumps(np.array([self.clients[websocket].get_vision(self.game.grid, self.vision_range)]).astype(np.int8)))
             return
 
-        print(action) # todo remove debug
+        self.render()
+
         player = self.clients[websocket]
         player.move_direction = Directions[action]
 
@@ -52,7 +56,7 @@ class TileServer:
             await self.send_observations()
 
     async def send_observations(self):
-        before_update = {ws: {deepcopy(self.clients[ws])} for ws in self.clients.keys()}
+        before_update = {ws: deepcopy(self.clients[ws]) for ws in self.clients.keys()}
 
         self.game.update()
 
@@ -82,6 +86,34 @@ class TileServer:
     def close(self):
         if self.loop is not None:
             self.loop.stop()
+            
+    def render(self):
+        cv2.imshow('Window Name', self._render_frame())
+        cv2.waitKey(1)
+    
+    def _render_frame(self):
+        canvas = pygame.Surface((self.width, self.height))
+        canvas.fill((0, 0, 0))
+        
+        for y, row in enumerate(self.game.grid.tiles):
+            for x, tile in enumerate(row):
+                pygame.draw.rect(canvas, (0, 0, 0), (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size))
+                if tile.claimed:
+                    pygame.draw.rect(canvas, tile.claimer.color, (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size))
+                else:
+                    pygame.draw.rect(canvas, (20, 20, 20), (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size), 1)
+                if tile.ocupied:
+                    margin = self.grid_tile_size // 5
+                    pygame.draw.rect(canvas, (max(tile.ocupant.color.r - 40, 0), max(tile.ocupant.color.g - 40, 0), max(tile.ocupant.color.b - 40, 0)), (x * self.grid_tile_size + margin, y * self.grid_tile_size + margin, self.grid_tile_size - 2 * margin, self.grid_tile_size - 2 * margin))
+        
+        for player in self.game.players:
+            margin = self.grid_tile_size // 5
+            pygame.draw.rect(canvas, (255, 0, 0), (player.position.x * self.grid_tile_size + margin, player.position.y * self.grid_tile_size + margin, self.grid_tile_size - 2 * margin, self.grid_tile_size - 2 * margin))
+
+        self.surf = pygame.transform.flip(canvas, False, True)
+        return np.transpose(
+            np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
+        )
 
     @staticmethod
     def create_server(grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
@@ -121,4 +153,8 @@ class ClientPlayerEnv(gymnasium.Env):
         super().reset(seed=seed, options=options)
         
         self.loop.run_until_complete(self.client.send(pickle.dumps("reset")))
-        return self.loop.run_until_complete(self.client.recv())
+        return pickle.loads(self.loop.run_until_complete(self.client.recv()))
+    
+    def step(self, action):
+        self.loop.run_until_complete(self.client.send(pickle.dumps(action)))
+        return pickle.loads(self.loop.run_until_complete(self.client.recv()))
