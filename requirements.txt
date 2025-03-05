@@ -6,3 +6,4 @@ pillow
 imitation
 ipywidgets
 websockets
+nest_asyncio

@@ -65,7 +65,7 @@ class SoloPlayerEnv(gymnasium.Env):
 
         reward = 0.0
         if self.player.claim_count > previous_score:
-            reward += 1.0
+            reward += self.player.claim_count - previous_score
 
         reward = -1.0 if terminated else reward
         
