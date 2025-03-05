@@ -1,3 +1,4 @@
+from copy import deepcopy
 import cv2
 import numpy as np
 import gymnasium
@@ -15,7 +16,7 @@ class TileServer:
         self.port = port
         self.grid_size = grid_size
         self.vision_range = vision_range
-        self.clients = {}
+        self.clients: dict[websockets.Websocket, Player] = {}
         self.players_moved = {}
         self.game = Game(grid_size, grid_size)
 
@@ -44,27 +45,29 @@ class TileServer:
 
         self.players_moved[websocket] = True
         if all(self.players_moved.values()):
-            self.game.update()
             self.players_moved = {ws: False for ws in self.players_moved}
-
-            # send the new obs back
-            # todo
-            await asyncio.wait(websocket.send())
-            
+            await self.send_observations()
 
     async def send_observations(self):
+        before_update = {ws: {deepcopy(self.clients[ws])} for ws in self.clients.keys()}
+
+        self.game.update()
+
+        def calculate_reward(before_update_player, player):
+            # todo
+            pass
+
         data = {ws: (
             np.array([self.clients[ws].get_vision(self.game.grid, self.vision_range)]).astype(np.int8),
-            reward,
-            terminated,
-            truncated,
-            info,
-        ) for ws in self.clients}
+            calculate_reward(before_update[ws], self.clients[ws]),
+            not self.clients[ws].is_alive,
+            False, # truncated
+            {},
+        ) for ws in self.clients.keys()}
         pickled_data = {
             ws: pickle.dumps(data[ws])
-        for ws in self.clients}
+        for ws in self.clients.keys()}
         await asyncio.wait([ws.send(pickled_data[ws]) for ws in self.clients.keys()])
-        self.moves.clear()
 
     def start(self):
         self.loop = asyncio.get_event_loop()
