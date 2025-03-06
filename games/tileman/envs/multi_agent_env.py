@@ -11,7 +11,7 @@ import pickle
 import subprocess
 
 class TileServerLoadBalancer:
-    def __init__(self, max_players_per_server=4, grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
+    def __init__(self, max_players_per_server=4, grid_size=40, vision_range=5, host='localhost', port=9909):
         self.host = host
         self.port = port
         self.grid_size = grid_size
@@ -24,7 +24,7 @@ class TileServerLoadBalancer:
 
     async def start_server(self):
         print(f"Starting load balancer on {self.host}:{self.port}")
-        async with websockets.serve(self.new_client, self.host, self.port):
+        async with websockets.serve(self.new_client, "0.0.0.0", self.port):
             await asyncio.Future()
 
     def start(self):
@@ -39,17 +39,25 @@ class TileServerLoadBalancer:
         self.create_new_server()
         return self.next_port - 1
 
-    async def new_client(self, websocket, path):
+    async def new_client(self, websocket, path=""):
         good_server_port = self.get_good_server()
-        print(f"Found good server on port {good_server_port}")
-        async with websockets.connect(f"ws://{self.host}:{good_server_port}") as ws:
-            proxy_forward = asyncio.create_task(self.proxy_forward(ws, websocket))
-            proxy_backward = asyncio.create_task(self.proxy_backward(ws, websocket))
+        
+        print(f"Found good server on ws://{self.host}:{good_server_port}")
+        
+        for _, (clients, port) in self.servers.items():
+            if port == good_server_port:
+                clients.append(websocket)
+                break
             
-            await asyncio.gather(proxy_forward, proxy_backward)
-            
-            # clean up server
-            self.clean_up_servers()
+        async with websockets.connect(f"ws://localhost:{good_server_port}") as ws:
+            async def proxy_forward():
+                async for message in websocket:
+                    await ws.send(message)
+            async def proxy_backward():
+                async for message in ws:
+                    await websocket.send(message)
+                    
+            await asyncio.gather(proxy_forward(), proxy_backward())
 
     def create_new_server(self):
         server = TileServer.start_popen_process(port=self.next_port)
@@ -61,24 +69,6 @@ class TileServerLoadBalancer:
     def clean_up_servers(self):
         # if there are any empty servers close them
         pass
-
-    async def proxy_forward(self, source, target):
-        try:
-            async for message in source:
-                await target.send(message)
-        except Exception as e:
-            print(f"Error forwarding client->server: {e}")
-        finally:
-            await target.close()
-    
-    async def proxy_backward(self, source, target):
-        try:
-            async for message in source:
-                await target.send(message)
-        except Exception as e:
-            print(f"Error forwarding server->client: {e}")
-        finally:
-            await target.close()
 
     def close(self):
         for server in self.servers.keys():
@@ -92,6 +82,7 @@ class TileServer:
         self.vision_range = vision_range
         self.clients: dict[websockets.ClientConnection, Player] = {}
         self.players_moved = {}
+        self.players_resetting = {}
         self.game = Game(grid_size, grid_size)
         
         self.width = 600
@@ -110,6 +101,7 @@ class TileServer:
         finally:
             del self.players_moved[websocket]
             del self.clients[websocket]
+            del self.players_resetting[websocket]
             player.kill(self.game.grid)
 
     async def process_action(self, websocket: websockets.ClientConnection, action):
@@ -122,15 +114,16 @@ class TileServer:
             self.clients[websocket] = self.game.spawn_random_player()
             self.players_moved[websocket] = False
             await websocket.send(pickle.dumps(np.array([self.clients[websocket].get_vision(self.game.grid, self.vision_range)]).astype(np.int8)))
-            return
-
-
-        player = self.clients[websocket]
-        player.move_direction = Directions[action]
-        self.players_moved[websocket] = True
+        else:
+            player = self.clients[websocket]
+            player.move_direction = Directions[action]
+            self.players_moved[websocket] = True
 
         # print(self.players_moved.values())
 
+        await self.check_should_update()
+
+    async def check_should_update(self):
         if all(self.players_moved.values()):
             self.players_moved = {ws: False for ws in self.players_moved}
             await self.send_observations()
@@ -154,7 +147,7 @@ class TileServer:
         pickled_data = {
             ws: pickle.dumps(data[ws])
         for ws in self.clients.keys()}
-        await asyncio.wait([ws.send(pickled_data[ws]) for ws in self.clients.keys()])
+        await asyncio.wait([ws.send(pickled_data[ws]) for ws in self.clients.keys() if not self.players_resetting.get(ws, False)])
 
     async def start_server(self):
         print(f"Starting server at {self.host}:{self.port}")
@@ -210,8 +203,7 @@ class TileServer:
         import time
 
         process = subprocess.Popen([sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')), f"{port}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # print(sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')), port)
-        time.sleep(1)
+        print(sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')), port)
         return process
 
 
