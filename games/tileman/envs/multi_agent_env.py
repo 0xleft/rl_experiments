@@ -9,6 +9,70 @@ import asyncio
 import websockets
 import pickle
 
+class TileServerLoadBalancer:
+    def __init__(self, max_players_per_server=4, grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
+        self.host = host
+        self.port = port
+        self.grid_size = grid_size
+        self.vision_range = vision_range
+        self.max_players_per_server = max_players_per_server
+        self.next_port = port + 1
+
+        self.servers: dict[TileServer, list[websockets.ClientConnection]] = {self.create_new_server(): []}
+        balancer_server = websockets.serve(self.new_client, self.host, self.port)
+    
+        print(f"Starting load balancer on {self.host}:{self.port}")
+        asyncio.get_event_loop().run_until_complete(balancer_server)
+        asyncio.get_event_loop().run_forever()
+
+    def get_good_server(self) -> int:
+        for server in self.servers.keys():
+            if len(server.game.players) < self.max_players_per_server:
+                return server.port
+            
+        # create a new server
+        new_server
+        self.servers[] = []
+        return 
+
+    async def new_client(self, websocket, path):
+        # todo select a server or create a new one
+        async with websockets.connect(f"ws://{self.host}:{}") as ws:
+            proxy_forward = asyncio.create_task(self.proxy_forward(ws, websocket))
+            proxy_backward = asyncio.create_task(self.proxy_backward(ws, websocket))
+            
+            await asyncio.gather(proxy_forward, proxy_backward)
+            
+            # clean up server
+            self.clean_up_servers()
+
+    def create_new_server(self):
+        server = TileServer.create_server(self.grid_size, self.vision_range, port=self.next_port)
+        self.next_port += 1
+        return server
+
+    def clean_up_servers(self):
+        # if there are any empty servers close them
+        pass
+
+    async def proxy_forward(self, source, target):
+        try:
+            async for message in source:
+                await target.send(message)
+        except Exception as e:
+            print(f"Error forwarding client->server: {e}")
+        finally:
+            await target.close()
+    
+    async def proxy_backward(self, source, target):
+        try:
+            async for message in source:
+                await target.send(message)
+        except Exception as e:
+            print(f"Error forwarding server->client: {e}")
+        finally:
+            await target.close()
+
 class TileServer:
     def __init__(self, grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
         self.host = host
@@ -52,10 +116,9 @@ class TileServer:
 
         player = self.clients[websocket]
         player.move_direction = Directions[action]
-
         self.players_moved[websocket] = True
 
-        print(self.players_moved.values())
+        # print(self.players_moved.values())
 
         if all(self.players_moved.values()):
             self.players_moved = {ws: False for ws in self.players_moved}
@@ -66,7 +129,6 @@ class TileServer:
 
         self.game.update()
         # self.render()
-        print("updating")
 
         def calculate_reward(before_update_player: Player, player: Player):
             return player.claim_count - before_update_player.claim_count + player.moves_since_capture * -0.01
