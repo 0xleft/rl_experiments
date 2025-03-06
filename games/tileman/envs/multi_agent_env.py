@@ -8,6 +8,7 @@ import pygame
 import asyncio
 import websockets
 import pickle
+import subprocess
 
 class TileServerLoadBalancer:
     def __init__(self, max_players_per_server=4, grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
@@ -18,26 +19,30 @@ class TileServerLoadBalancer:
         self.max_players_per_server = max_players_per_server
         self.next_port = port + 1
 
-        self.servers: dict[TileServer, list[websockets.ClientConnection]] = {self.create_new_server(): []}
-        balancer_server = websockets.serve(self.new_client, self.host, self.port)
-    
+        self.servers: dict[subprocess.Popen, tuple[list[websockets.ClientConnection], int]] = {}
+        self.create_new_server() # the default one server
+
+    async def start_server(self):
         print(f"Starting load balancer on {self.host}:{self.port}")
-        asyncio.get_event_loop().run_until_complete(balancer_server)
-        asyncio.get_event_loop().run_forever()
+        async with websockets.serve(self.new_client, self.host, self.port):
+            await asyncio.Future()
+
+    def start(self):
+        asyncio.run(self.start_server())
 
     def get_good_server(self) -> int:
         for server in self.servers.keys():
-            if len(server.game.players) < self.max_players_per_server:
-                return server.port
+            if len(self.servers[server][0]) < self.max_players_per_server:
+                return self.servers[server][1]
             
         # create a new server
-        new_server
-        self.servers[] = []
-        return 
+        self.create_new_server()
+        return self.next_port - 1
 
     async def new_client(self, websocket, path):
-        # todo select a server or create a new one
-        async with websockets.connect(f"ws://{self.host}:{}") as ws:
+        good_server_port = self.get_good_server()
+        print(f"Found good server on port {good_server_port}")
+        async with websockets.connect(f"ws://{self.host}:{good_server_port}") as ws:
             proxy_forward = asyncio.create_task(self.proxy_forward(ws, websocket))
             proxy_backward = asyncio.create_task(self.proxy_backward(ws, websocket))
             
@@ -47,8 +52,10 @@ class TileServerLoadBalancer:
             self.clean_up_servers()
 
     def create_new_server(self):
-        server = TileServer.create_server(self.grid_size, self.vision_range, port=self.next_port)
+        server = TileServer.start_popen_process(port=self.next_port)
+        self.servers[server] = ([], self.next_port)
         self.next_port += 1
+        print(f"Created new child server on port {self.next_port - 1}")
         return server
 
     def clean_up_servers(self):
@@ -72,6 +79,10 @@ class TileServerLoadBalancer:
             print(f"Error forwarding server->client: {e}")
         finally:
             await target.close()
+
+    def close(self):
+        for server in self.servers.keys():
+            server.kill()
 
 class TileServer:
     def __init__(self, grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
@@ -189,17 +200,17 @@ class TileServer:
     def create_server(grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
         server = TileServer(grid_size, vision_range, host, port)
         server.start()
+        return server
 
     @staticmethod
-    def start_popen_process():
+    def start_popen_process(port=9909):
         import subprocess
         import sys
         import os
         import time
 
-        process = subprocess.Popen([sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py'))], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        print(sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')))
+        process = subprocess.Popen([sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')), f"{port}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # print(sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')), port)
         time.sleep(1)
         return process
 
