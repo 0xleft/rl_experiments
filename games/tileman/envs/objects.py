@@ -40,6 +40,7 @@ class Player:
     claim_count: int = 0
     max_claim_count: int = 0
     steps_survived: int = 0
+    moves_since_capture: int = 0
     
     def __init__(self, x: int, y: int):
         self.position = Vector(x, y)
@@ -207,6 +208,8 @@ class Game:
             tile.ocupant.kill(self.grid)
   
     def update_player_claims(self, player: Player):
+        player.moves_since_capture += 1
+
         new_position = Vector(player.position.x + player.move_direction.x, player.position.y + player.move_direction.y)
     
         if self.grid.get_tile_at(new_position).claimer == player and self.grid.get_tile_at(player.position).claimer != player:
@@ -218,6 +221,7 @@ class Game:
                         tile.claim(player)
                         tile.unoccupy()
                         player.claim_count += 1
+                        player.moves_since_capture = 0
                         
                         if player.claim_count > player.max_claim_count:
                             player.max_claim_count = player.claim_count

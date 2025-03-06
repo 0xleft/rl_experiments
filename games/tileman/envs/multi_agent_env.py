@@ -24,6 +24,7 @@ class TileServer:
         self.grid_tile_size = min(self.width // len(self.game.grid.tiles[0]), self.height // len(self.game.grid.tiles))
 
     async def handler(self, websocket, path=""):
+        print("new client connected")
         player = self.game.spawn_random_player()
         self.clients[websocket] = player
         self.players_moved[websocket] = False
@@ -42,6 +43,9 @@ class TileServer:
             return
         
         if isinstance(action, str) and action == "reset":
+            self.clients[websocket].kill(self.game.grid)
+            self.clients[websocket] = self.game.spawn_random_player()
+            self.players_moved[websocket] = False
             await websocket.send(pickle.dumps(np.array([self.clients[websocket].get_vision(self.game.grid, self.vision_range)]).astype(np.int8)))
             return
 
@@ -50,6 +54,9 @@ class TileServer:
         player.move_direction = Directions[action]
 
         self.players_moved[websocket] = True
+
+        print(self.players_moved.values())
+
         if all(self.players_moved.values()):
             self.players_moved = {ws: False for ws in self.players_moved}
             await self.send_observations()
@@ -59,9 +66,10 @@ class TileServer:
 
         self.game.update()
         # self.render()
+        print("updating")
 
         def calculate_reward(before_update_player: Player, player: Player):
-            return player.claim_count - before_update_player.claim_count
+            return player.claim_count - before_update_player.claim_count + player.moves_since_capture * -0.01
 
         data = {ws: (
             np.array([self.clients[ws].get_vision(self.game.grid, self.vision_range)]).astype(np.int8),
@@ -153,7 +161,6 @@ class ClientPlayerEnv(gymnasium.Env):
             shape=(1, 3 * (self.vision_range*2 + 1)**2),
             dtype=np.int8
         )
-
         
         self.loop = asyncio.new_event_loop()
         self.loop.run_until_complete(self.connect_to_server())
@@ -165,7 +172,7 @@ class ClientPlayerEnv(gymnasium.Env):
         super().reset(seed=seed, options=options)
         
         self.loop.run_until_complete(self.client.send(pickle.dumps("reset")))
-        return pickle.loads(self.loop.run_until_complete(self.client.recv()))
+        return pickle.loads(self.loop.run_until_complete(self.client.recv())), {}
     
     def step(self, action):
         self.loop.run_until_complete(self.client.send(pickle.dumps(action)))
