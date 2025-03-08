@@ -97,7 +97,9 @@ class Player:
 
             borders.append(1 if vision[i][1] else 0)
         
-        return np.concatenate([claims, ocupations, borders])
+        result = np.array([claims, ocupations, borders]).astype(np.int8)
+        result = result.reshape(3, 2 * vision_range + 1, 2 * vision_range + 1)
+        return result
 
 
 class Tile:

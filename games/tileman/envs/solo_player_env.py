@@ -9,7 +9,7 @@ class SoloPlayerEnv(gymnasium.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
 
-    def __init__(self, grid_size=10, vision_range=5, render_mode="rgb_array"):
+    def __init__(self, grid_size=10, vision_range=14, render_mode="rgb_array"):
         super(SoloPlayerEnv, self).__init__()
         self.render_mode = render_mode
 
@@ -32,10 +32,10 @@ class SoloPlayerEnv(gymnasium.Env):
         self.observation_space = spaces.Box(
             low=-1,
             high=1,
-            shape=(1, 3 * (self.vision_range*2 + 1)**2),
+            shape=(3, self.vision_range*2 + 1, self.vision_range*2 + 1),
             dtype=np.int8
         )
-
+        
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
         self.steps = 0
@@ -45,7 +45,7 @@ class SoloPlayerEnv(gymnasium.Env):
         if self.render_mode == "human":
             self._render_frame()
 
-        return np.array([self.player.get_vision(self.game.grid, self.vision_range)]).astype(np.int8), {}  # empty info dict
+        return self.player.get_vision(self.game.grid, self.vision_range), {}  # empty info dict
 
     def step(self, action):
         if action not in Directions:
@@ -76,7 +76,7 @@ class SoloPlayerEnv(gymnasium.Env):
             self._render_frame()
 
         return (
-            np.array([self.player.get_vision(self.game.grid, self.vision_range)]).astype(np.int8),
+            self.player.get_vision(self.game.grid, self.vision_range),
             reward,
             terminated,
             truncated,

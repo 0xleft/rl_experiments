@@ -8,10 +8,11 @@ import pygame
 import asyncio
 import websockets
 import pickle
+import threading
 import subprocess
 
 class TileServerLoadBalancer:
-    def __init__(self, max_players_per_server=4, grid_size=40, vision_range=5, host='localhost', port=9909):
+    def __init__(self, max_players_per_server=4, grid_size=40, vision_range=5, host='localhost', port=32544):
         self.host = host
         self.port = port
         self.grid_size = grid_size
@@ -114,12 +115,13 @@ class TileServer:
             self.clients[websocket] = self.game.spawn_random_player()
             self.players_moved[websocket] = False
             await websocket.send(pickle.dumps(np.array([self.clients[websocket].get_vision(self.game.grid, self.vision_range)]).astype(np.int8)))
-        else:
-            player = self.clients[websocket]
-            player.move_direction = Directions[action]
-            self.players_moved[websocket] = True
+            return
+        
+        player = self.clients[websocket]
+        player.move_direction = Directions[action]
+        self.players_moved[websocket] = True
 
-        # print(self.players_moved.values())
+        print(self.players_moved.values())
 
         await self.check_should_update()
 
@@ -202,8 +204,16 @@ class TileServer:
         import os
         import time
 
+        def print_output(process):
+            def print_pipe(pipe):
+                for line in iter(pipe.readline, b''):
+                    print(line.decode(), end='')
+            threading.Thread(target=print_pipe, args=(process.stdout,), daemon=True).start()
+            threading.Thread(target=print_pipe, args=(process.stderr,), daemon=True).start()
+
         process = subprocess.Popen([sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')), f"{port}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print(sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')), port)
+        # print(sys.executable, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 'tile_server.py')), port)
+        print_output(process)
         return process
 
 
@@ -211,7 +221,7 @@ class ClientPlayerEnv(gymnasium.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
 
-    def __init__(self, vision_range=5, host='localhost', port=9909, render_mode="rgb_array"):
+    def __init__(self, vision_range=5, host='localhost', port=32544, render_mode="rgb_array"):
         super(ClientPlayerEnv, self).__init__()
         
         self.vision_range = vision_range
@@ -236,12 +246,20 @@ class ClientPlayerEnv(gymnasium.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
         
-        self.loop.run_until_complete(self.client.send(pickle.dumps("reset")))
-        return pickle.loads(self.loop.run_until_complete(self.client.recv())), {}
-    
+        try:
+            self.loop.run_until_complete(self.client.send(pickle.dumps("reset")))
+            return pickle.loads(self.loop.run_until_complete(self.client.recv())), {}
+        except Exception as e:
+            print(e)
+            return None, {}
+        
     def step(self, action):
-        self.loop.run_until_complete(self.client.send(pickle.dumps(action)))
-        return pickle.loads(self.loop.run_until_complete(self.client.recv()))
+        try:
+            self.loop.run_until_complete(self.client.send(pickle.dumps(action)))
+            return pickle.loads(self.loop.run_until_complete(self.client.recv()))
+        except Exception as e:
+            print(e)
+            return None, 0, True, {}
     
 from gymnasium.envs.registration import register
 
