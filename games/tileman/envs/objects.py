@@ -164,18 +164,23 @@ class Game:
 
     def get_vision(self, player: Player, vision_range: int = 20):
         player_vision = player.get_vision(self.grid, vision_range)
-        player_locations = np.zeros((1, 2 * vision_range + 1, 2 * vision_range + 1))
+        player_locations = np.zeros((1, 2 * vision_range + 1, 2 * vision_range + 1), dtype=np.int8)
 
-        # set player locations self player is 1 other players are -1.
-        # because we have a vision range it means our player is always in the center so other players are relative
         for other_player in self.players:
             if other_player == player:
                 continue
-            x = other_player.position.x - player.position.x + vision_range
-            y = other_player.position.y - player.position.y + vision_range
-            player_locations[0][y][x] = -1
+            # check if player is outside of the vision range
+            left = player.position.x - vision_range
+            right = player.position.x + vision_range
+            top = player.position.y - vision_range
+            bottom = player.position.y + vision_range
+            
+            if other_player.position.x < left or other_player.position.x > right or other_player.position.y < top or other_player.position.y > bottom:
+                continue
+            
+            player_locations[0][other_player.position.y - top, other_player.position.x - left] = -1
 
-        return
+        return np.concatenate((player_vision, player_locations))
 
     def add_player(self, player: Player):
         self.players.append(player)

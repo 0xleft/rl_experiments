@@ -130,7 +130,7 @@ class TileServer:
             self.clients[websocket]["is_resetting"] = True
             self.clients[websocket]["moved"] = False
             self.clients[websocket]["should_ignore"] = False
-            await websocket.send(pickle.dumps(self.clients[websocket]["player"].get_vision(self.game.grid, self.vision_range)))
+            await websocket.send(pickle.dumps(self.game.get_vision(self.clients[websocket]["player"], self.vision_range)))
             return
         
         self.clients[websocket]["is_resetting"] = False
@@ -138,7 +138,7 @@ class TileServer:
         self.clients[websocket]["player"].move_direction = Directions[action]
         self.clients[websocket]["moved"] = True
 
-        print(list(self.clients[ws]["moved"] for ws in self.clients))
+        # print(list(self.clients[ws]["should_ignore"] for ws in self.clients))
         # if most clients have moved place a timer that after some time if no move is done sets ignore to false to the clients that have not moved
         
         async def set_should_ignore():
@@ -176,7 +176,7 @@ class TileServer:
             return player.claim_count - before_update_player.claim_count + player.moves_since_capture * -0.01
 
         data = {ws: (
-            self.clients[ws]["player"].get_vision(self.game.grid, self.vision_range),
+            self.game.get_vision(self.clients[ws]["player"], self.vision_range),
             calculate_reward(before_update[ws], self.clients[ws]["player"]),
             not self.clients[ws]["player"].is_alive,
             False, # truncated
@@ -269,25 +269,37 @@ class ClientPlayerEnv(gymnasium.Env):
         self.observation_space = spaces.Box(
             low=-1,
             high=1,
-            shape=(3, (self.vision_range*2 + 1), (self.vision_range*2 + 1)),
+            shape=(4, (self.vision_range*2 + 1), (self.vision_range*2 + 1)),
             dtype=np.int8
         )
         
         self.loop = asyncio.new_event_loop()
         self.loop.run_until_complete(self.connect_to_server())
 
-        async def keepalive():
-            while True:
-                await asyncio.sleep(5)
-                await self.client.send(pickle.dumps("keepalive"))
+        self.start_keepalive()
+    
+    def start_keepalive(self):
+        self.running = True
 
-        threading.Thread(target=lambda: asyncio.run(keepalive()), daemon=True).start()
-        
+        async def keepalive():
+            while self.running:
+                await asyncio.sleep(5)
+                try:
+                    await self.client.send(pickle.dumps("keepalive"))
+                except:
+                    return
+
+        self.keep_alive_thread = threading.Thread(target=lambda: asyncio.run(keepalive()))
+        self.keep_alive_thread.start()
+    
     async def connect_to_server(self):
         self.client = await websockets.connect(f"ws://{self.host}:{self.port}")
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
+        
+        # self.loop.run_until_complete(self.client.close())
+        # self.loop.run_until_complete(self.connect_to_server())
         
         self.loop.run_until_complete(self.client.send(pickle.dumps("reset")))
         return pickle.loads(self.loop.run_until_complete(self.client.recv())), {}
@@ -295,6 +307,11 @@ class ClientPlayerEnv(gymnasium.Env):
     def step(self, action):
         self.loop.run_until_complete(self.client.send(pickle.dumps(action)))
         return pickle.loads(self.loop.run_until_complete(self.client.recv()))
+    
+    def close(self):
+        self.loop.run_until_complete(self.client.close())
+        self.running = False
+        self.keep_alive_thread.join()
     
 from gymnasium.envs.registration import register
 
