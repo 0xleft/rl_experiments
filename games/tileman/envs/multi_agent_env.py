@@ -1,3 +1,5 @@
+import nest_asyncio
+nest_asyncio.apply()
 from copy import deepcopy
 import cv2
 import numpy as np
@@ -80,11 +82,19 @@ class TileServer:
         self.host = host
         self.port = port
         self.grid_size = grid_size
+        self.ignore_task = None
         self.vision_range = vision_range
-        self.clients: dict[websockets.ClientConnection, Player] = {}
-        self.players_moved = {}
-        self.players_resetting = {}
+        self.clients: dict[websockets.ClientConnection, dict] = {
+            # websocket: {
+            #     "player": Player,
+            #     "moved": bool,
+            #     "should_ignore": bool,
+            #     "time_since_last_move": int,
+            #     "is_resetting": bool,
+            # }
+        }
         self.game = Game(grid_size, grid_size)
+        self.checking_for_ignore = False
         
         self.width = 600
         self.height = 600
@@ -93,16 +103,17 @@ class TileServer:
     async def handler(self, websocket, path=""):
         print("new client connected")
         player = self.game.spawn_random_player()
-        self.clients[websocket] = player
-        self.players_moved[websocket] = False
+        self.clients[websocket] = {}
+        self.clients[websocket]["player"] = player
+        self.clients[websocket]["moved"] = False
+        self.clients[websocket]["is_resetting"] = False
+        self.clients[websocket]["should_ignore"] = False
         try:
             async for message in websocket:
                 action = pickle.loads(message)
                 await self.process_action(websocket, action)
         finally:
-            del self.players_moved[websocket]
             del self.clients[websocket]
-            del self.players_resetting[websocket]
             player.kill(self.game.grid)
 
     async def process_action(self, websocket: websockets.ClientConnection, action):
@@ -110,28 +121,53 @@ class TileServer:
             self.close()
             return
         
-        if isinstance(action, str) and action == "reset":
-            self.clients[websocket].kill(self.game.grid)
-            self.clients[websocket] = self.game.spawn_random_player()
-            self.players_moved[websocket] = False
-            await websocket.send(pickle.dumps(np.array([self.clients[websocket].get_vision(self.game.grid, self.vision_range)]).astype(np.int8)))
+        if isinstance(action, str) and action == "keepalive":
             return
         
-        player = self.clients[websocket]
-        player.move_direction = Directions[action]
-        self.players_moved[websocket] = True
+        if isinstance(action, str) and action == "reset":
+            self.clients[websocket]["player"].kill(self.game.grid)
+            self.clients[websocket]["player"] = self.game.spawn_random_player()
+            self.clients[websocket]["is_resetting"] = True
+            self.clients[websocket]["moved"] = False
+            self.clients[websocket]["should_ignore"] = False
+            await websocket.send(pickle.dumps(self.clients[websocket]["player"].get_vision(self.game.grid, self.vision_range)))
+            return
+        
+        self.clients[websocket]["is_resetting"] = False
+        self.clients[websocket]["should_ignore"] = False
+        self.clients[websocket]["player"].move_direction = Directions[action]
+        self.clients[websocket]["moved"] = True
 
-        print(self.players_moved.values())
+        print(list(self.clients[ws]["moved"] for ws in self.clients))
+        # if most clients have moved place a timer that after some time if no move is done sets ignore to false to the clients that have not moved
+        
+        async def set_should_ignore():
+            await asyncio.sleep(1)
 
-        await self.check_should_update()
+            for ws in self.clients:
+                if not self.clients[ws]["moved"]:
+                    self.clients[ws]["should_ignore"] = True
+            
+            await self.check_should_update()
+            self.checking_for_ignore = False
+
+        if not self.checking_for_ignore:
+            self.checking_for_ignore = True
+            self.ignore_task = asyncio.create_task(set_should_ignore())
+        else:
+            await self.check_should_update()
 
     async def check_should_update(self):
-        if all(self.players_moved.values()):
-            self.players_moved = {ws: False for ws in self.players_moved}
+        if all(self.clients[ws]["moved"] or self.clients[ws]["should_ignore"] for ws in self.clients):
+            if self.ignore_task:
+                self.ignore_task.cancel()
+                self.ignore_task = None
+            for ws in self.clients:
+                self.clients[ws]["moved"] = False
             await self.send_observations()
 
     async def send_observations(self):
-        before_update = {ws: deepcopy(self.clients[ws]) for ws in self.clients.keys()}
+        before_update = {ws: deepcopy(self.clients[ws]["player"]) for ws in self.clients.keys()}
 
         self.game.update()
         # self.render()
@@ -140,16 +176,16 @@ class TileServer:
             return player.claim_count - before_update_player.claim_count + player.moves_since_capture * -0.01
 
         data = {ws: (
-            np.array([self.clients[ws].get_vision(self.game.grid, self.vision_range)]).astype(np.int8),
-            calculate_reward(before_update[ws], self.clients[ws]),
-            not self.clients[ws].is_alive,
+            self.clients[ws]["player"].get_vision(self.game.grid, self.vision_range),
+            calculate_reward(before_update[ws], self.clients[ws]["player"]),
+            not self.clients[ws]["player"].is_alive,
             False, # truncated
             {},
         ) for ws in self.clients.keys()}
         pickled_data = {
             ws: pickle.dumps(data[ws])
         for ws in self.clients.keys()}
-        await asyncio.wait([ws.send(pickled_data[ws]) for ws in self.clients.keys() if not self.players_resetting.get(ws, False)])
+        await asyncio.wait([ws.send(pickled_data[ws]) for ws in self.clients.keys() if not self.clients[ws]["is_resetting"] and not self.clients[ws]["should_ignore"]])
 
     async def start_server(self):
         print(f"Starting server at {self.host}:{self.port}")
@@ -221,7 +257,7 @@ class ClientPlayerEnv(gymnasium.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
 
-    def __init__(self, vision_range=5, host='localhost', port=32544, render_mode="rgb_array"):
+    def __init__(self, vision_range=5, host='localhost', port=9909, render_mode="rgb_array"):
         super(ClientPlayerEnv, self).__init__()
         
         self.vision_range = vision_range
@@ -233,33 +269,32 @@ class ClientPlayerEnv(gymnasium.Env):
         self.observation_space = spaces.Box(
             low=-1,
             high=1,
-            shape=(1, 3 * (self.vision_range*2 + 1)**2),
+            shape=(3, (self.vision_range*2 + 1), (self.vision_range*2 + 1)),
             dtype=np.int8
         )
         
         self.loop = asyncio.new_event_loop()
         self.loop.run_until_complete(self.connect_to_server())
 
+        async def keepalive():
+            while True:
+                await asyncio.sleep(5)
+                await self.client.send(pickle.dumps("keepalive"))
+
+        threading.Thread(target=lambda: asyncio.run(keepalive()), daemon=True).start()
+        
     async def connect_to_server(self):
         self.client = await websockets.connect(f"ws://{self.host}:{self.port}")
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
         
-        try:
-            self.loop.run_until_complete(self.client.send(pickle.dumps("reset")))
-            return pickle.loads(self.loop.run_until_complete(self.client.recv())), {}
-        except Exception as e:
-            print(e)
-            return None, {}
+        self.loop.run_until_complete(self.client.send(pickle.dumps("reset")))
+        return pickle.loads(self.loop.run_until_complete(self.client.recv())), {}
         
     def step(self, action):
-        try:
-            self.loop.run_until_complete(self.client.send(pickle.dumps(action)))
-            return pickle.loads(self.loop.run_until_complete(self.client.recv()))
-        except Exception as e:
-            print(e)
-            return None, 0, True, {}
+        self.loop.run_until_complete(self.client.send(pickle.dumps(action)))
+        return pickle.loads(self.loop.run_until_complete(self.client.recv()))
     
 from gymnasium.envs.registration import register
 

@@ -161,7 +161,22 @@ class Game:
         self.players = []
         self.width = width
         self.height = height
-  
+
+    def get_vision(self, player: Player, vision_range: int = 20):
+        player_vision = player.get_vision(self.grid, vision_range)
+        player_locations = np.zeros((1, 2 * vision_range + 1, 2 * vision_range + 1))
+
+        # set player locations self player is 1 other players are -1.
+        # because we have a vision range it means our player is always in the center so other players are relative
+        for other_player in self.players:
+            if other_player == player:
+                continue
+            x = other_player.position.x - player.position.x + vision_range
+            y = other_player.position.y - player.position.y + vision_range
+            player_locations[0][y][x] = -1
+
+        return
+
     def add_player(self, player: Player):
         self.players.append(player)
         # if player is on the border we move him inside by a square
@@ -218,8 +233,10 @@ class Game:
             for row in self.grid.tiles:
                 for tile in row:
                     if tile.ocupant == player:
-                        if tile.claimer != None:
+                        if tile.claimer != None and tile.claimer != player:
                             tile.claimer.claim_count -= 1
+                            
+                        # to fill in the spaces in between the claim tiles we need to check for tiles until we find a tile that is going to be claimed (for right and left) then we claim all the tiles in between
                         tile.claim(player)
                         tile.unoccupy()
                         player.claim_count += 1
