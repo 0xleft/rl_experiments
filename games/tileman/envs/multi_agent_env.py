@@ -110,8 +110,14 @@ class TileServer:
         self.clients[websocket]["should_ignore"] = False
         try:
             async for message in websocket:
-                action = pickle.loads(message)
+                try:
+                    action = pickle.loads(message)
+                except pickle.UnpicklingError:
+                    print(message)
+                    continue
                 await self.process_action(websocket, action)
+        except websockets.ConnectionClosedError:
+            pass
         finally:
             del self.clients[websocket]
             player.kill(self.game.grid)
@@ -276,7 +282,7 @@ class ClientPlayerEnv(gymnasium.Env):
         self.loop = asyncio.new_event_loop()
         self.loop.run_until_complete(self.connect_to_server())
 
-        self.start_keepalive()
+        # self.start_keepalive()
     
     def start_keepalive(self):
         self.running = True
