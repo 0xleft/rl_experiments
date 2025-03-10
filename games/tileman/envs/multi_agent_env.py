@@ -79,7 +79,7 @@ class TileServerLoadBalancer:
             server.kill()
 
 class TileServer:
-    def __init__(self, grid_size=20, vision_range=10, host='0.0.0.0', port=9909):
+    def __init__(self, grid_size=20, vision_range=5, host='0.0.0.0', port=9909):
         self.host = host
         self.port = port
         self.grid_size = grid_size
@@ -192,7 +192,7 @@ class TileServer:
         def calculate_reward(before_update_player: Player, player: Player):
             if not player.is_alive:
                 return -1
-            reward = (player.claim_count - before_update_player.claim_count) * 0.9 + (-0.1 if self.game.grid.get_tile_at(player.position).claimer == player else 0) + (player.kills - before_update_player.kills) * 5
+            reward = (player.claim_count - before_update_player.claim_count) * 0.9 + (-player.moves_since_capture) * 0.01 + (-0.1 if self.game.grid.get_tile_at(player.position).claimer == player else 0) + (player.kills - before_update_player.kills) * 5
             return min(5, max(-5, reward)) # clip between 5 and -5
 
         data = {ws: (
@@ -277,7 +277,7 @@ class ClientPlayerEnv(gymnasium.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
 
-    def __init__(self, vision_range=10, host='localhost', port=9909, render_mode="rgb_array"):
+    def __init__(self, vision_range=5, host='localhost', port=9909, render_mode="rgb_array"):
         super(ClientPlayerEnv, self).__init__()
         
         self.vision_range = vision_range

@@ -225,14 +225,21 @@ class Game:
     def update_player_collisions(self, player: Player):
         new_position = Vector(player.position.x + player.move_direction.x, player.position.y + player.move_direction.y)
         if new_position.x < 0 or new_position.x >= len(self.grid.tiles[0]) or new_position.y < 0 or new_position.y >= len(self.grid.tiles):
+            # out of bounds
             player.kill(self.grid)
             return
         
         tile = self.grid.get_tile_at(new_position)
         if tile.ocupied and not tile.claimed:
+            # either a self kill or enemy kill
+            if tile.ocupant != player:
+                # not a self kill
+                player.kills += 1
             tile.ocupant.kill(self.grid)
         
         if tile.ocupied and tile.claimed and tile.claimer != tile.ocupant:
+            # kill someone that is on someone elses land
+            player.kills += 1
             tile.ocupant.kill(self.grid)
   
     def update_player_claims(self, player: Player):
