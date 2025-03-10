@@ -79,7 +79,7 @@ class TileServerLoadBalancer:
             server.kill()
 
 class TileServer:
-    def __init__(self, grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
+    def __init__(self, grid_size=20, vision_range=10, host='0.0.0.0', port=9909):
         self.host = host
         self.port = port
         self.grid_size = grid_size
@@ -274,7 +274,7 @@ class ClientPlayerEnv(gymnasium.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
 
-    def __init__(self, vision_range=5, host='localhost', port=9909, render_mode="rgb_array"):
+    def __init__(self, vision_range=10, host='localhost', port=9909, render_mode="rgb_array"):
         super(ClientPlayerEnv, self).__init__()
         
         self.vision_range = vision_range

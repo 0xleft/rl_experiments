@@ -206,6 +206,12 @@ class Game:
     def spawn_random_player(self, seed=None) -> Player:
         random.seed(seed)
         player = Player(random.randint(0, self.width - 1), random.randint(0, self.height - 1))
+        for other_player in self.players:
+            if other_player.position == player.position:
+                player = self.spawn_random_player(seed=seed)
+                self.add_player(player)
+                return player
+                
         self.add_player(player)
         return player
 
