@@ -192,7 +192,8 @@ class TileServer:
         def calculate_reward(before_update_player: Player, player: Player):
             if not player.is_alive:
                 return -1
-            return (player.claim_count - before_update_player.claim_count) * 0.9 + (-0.1 if self.game.grid.get_tile_at(player.position).claimer == player else 0) + (player.kills - before_update_player.kills) * 1.4
+            reward = (player.claim_count - before_update_player.claim_count) * 0.9 + (-0.1 if self.game.grid.get_tile_at(player.position).claimer == player else 0) + (player.kills - before_update_player.kills) * 5
+            return min(5, max(-5, reward)) # clip between 5 and -5
 
         data = {ws: (
             self.game.get_vision(self.clients[ws]["player"], self.vision_range),
