@@ -1,3 +1,4 @@
+import time
 import nest_asyncio
 nest_asyncio.apply()
 from copy import deepcopy
@@ -100,6 +101,15 @@ class TileServer:
         self.height = 600
         self.grid_tile_size = min(self.width // len(self.game.grid.tiles[0]), self.height // len(self.game.grid.tiles))
 
+        self.running = True
+        self.render_thread = threading.Thread(target=self.render_loop)
+        self.render_thread.start()
+
+    def render_loop(self):
+        while self.running:
+            self.render()
+            time.sleep(1/60)
+
     async def handler(self, websocket, path=""):
         print("new client connected")
         player = self.game.spawn_random_player()
@@ -137,6 +147,7 @@ class TileServer:
             self.clients[websocket]["moved"] = False
             self.clients[websocket]["should_ignore"] = False
             await websocket.send(pickle.dumps(self.game.get_vision(self.clients[websocket]["player"], self.vision_range)))
+            # self.render()
             return
         
         self.clients[websocket]["is_resetting"] = False
@@ -204,34 +215,34 @@ class TileServer:
     def close(self):
         if self.loop is not None:
             self.loop.stop()
+            self.running = False
+            self.render_thread.join()
+            self.ignore_task.cancel()
             
-    # def render(self):
-    #     cv2.imshow('Window Name', self._render_frame())
-    #     cv2.waitKey(1)
-    # 
-    # def _render_frame(self):
-    #     canvas = pygame.Surface((self.width, self.height))
-    #     canvas.fill((0, 0, 0))
-    #     
-    #     for y, row in enumerate(self.game.grid.tiles):
-    #         for x, tile in enumerate(row):
-    #             pygame.draw.rect(canvas, (0, 0, 0), (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size))
-    #             if tile.claimed:
-    #                 pygame.draw.rect(canvas, tile.claimer.color, (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size))
-    #             else:
-    #                 pygame.draw.rect(canvas, (20, 20, 20), (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size), 1)
-    #             if tile.ocupied:
-    #                 margin = self.grid_tile_size // 5
-    #                 pygame.draw.rect(canvas, (max(tile.ocupant.color.r - 40, 0), max(tile.ocupant.color.g - 40, 0), max(tile.ocupant.color.b - 40, 0)), (x * self.grid_tile_size + margin, y * self.grid_tile_size + margin, self.grid_tile_size - 2 * margin, self.grid_tile_size - 2 * margin))
-    #     
-    #     for player in self.game.players:
-    #         margin = self.grid_tile_size // 5
-    #         pygame.draw.rect(canvas, (255, 0, 0), (player.position.x * self.grid_tile_size + margin, player.position.y * self.grid_tile_size + margin, self.grid_tile_size - 2 * margin, self.grid_tile_size - 2 * margin))
-# 
-    #     self.surf = pygame.transform.flip(canvas, False, True)
-    #     return np.transpose(
-    #         np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-    #     )
+    def render(self):
+        cv2.imshow('Window Name', self._render_frame())
+        cv2.waitKey(1)
+
+    def _render_frame(self):
+        canvas = pygame.Surface((self.width, self.height))
+        canvas.fill((0, 0, 0))
+        for y, row in enumerate(self.game.grid.tiles):
+            for x, tile in enumerate(row):
+                pygame.draw.rect(canvas, (0, 0, 0), (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size))
+                if tile.claimed:
+                    pygame.draw.rect(canvas, tile.claimer.color, (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size))
+                else:
+                    pygame.draw.rect(canvas, (20, 20, 20), (x * self.grid_tile_size, y * self.grid_tile_size, self.grid_tile_size, self.grid_tile_size), 1)
+                if tile.ocupied:
+                    margin = self.grid_tile_size // 5
+                    pygame.draw.rect(canvas, (max(tile.ocupant.color.r - 40, 0), max(tile.ocupant.color.g - 40, 0), max(tile.ocupant.color.b - 40, 0)), (x * self.grid_tile_size + margin, y * self.grid_tile_size + margin, self.grid_tile_size - 2 * margin, self.grid_tile_size - 2 * margin))
+        for player in self.game.players:
+            margin = self.grid_tile_size // 5
+            pygame.draw.rect(canvas, (255, 0, 0), (player.position.x * self.grid_tile_size + margin, player.position.y * self.grid_tile_size + margin, self.grid_tile_size - 2 * margin, self.grid_tile_size - 2 * margin))
+        self.surf = pygame.transform.flip(canvas, False, True)
+        return np.transpose(
+            np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
+        )
 
     @staticmethod
     def create_server(grid_size=40, vision_range=5, host='0.0.0.0', port=9909):
