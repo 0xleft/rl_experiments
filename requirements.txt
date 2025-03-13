@@ -7,3 +7,8 @@ imitation
 ipywidgets
 websockets
 nest_asyncio
+yfinance
+pytorch-lightning
+openpyxl
+pandas-datareader
+yahooquery
