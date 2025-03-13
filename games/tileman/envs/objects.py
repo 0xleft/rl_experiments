@@ -203,12 +203,12 @@ class Game:
     def get_max_score(self) -> int:
         return max([player.claim_count for player in self.players]) if len(self.players) > 0 else 0
 
-    def spawn_random_player(self, seed=None) -> Player:
+    def spawn_random_player(self, seed=None, depth=0) -> Player:
         random.seed(seed)
         player = Player(random.randint(0, self.width - 1), random.randint(0, self.height - 1))
         for other_player in self.players:
-            if other_player.position == player.position:
-                player = self.spawn_random_player(seed=seed)
+            if (other_player.position == player.position or self.grid.get_tile_at(player.position).claimed or self.grid.get_tile_at(player.position).ocupied) and depth < 10:
+                player = self.spawn_random_player(seed=seed, depth=depth + 1)
                 self.add_player(player)
                 return player
                 
